@@ -97,6 +97,19 @@ OpenCode always submits registered commands as model turns. The plugin rewrites 
 
 Terminal model transitions are visible in the `goal_update` tool result. System budget/error transitions are visible in the persistent badge, file log, and `/goal` summary. The plugin does not append a terminal `noReply` user message because OpenCode can treat that dangling message as replyable when a session is resumed.
 
+## Writing a good objective
+
+The objective is user-provided data: it names the end state to pursue and where the requirements live, not an instruction script. The model reads it fresh on every turn and verifies completion against the actual worktree, so prefer a concise statement of the desired end state that references authoritative sources instead of embedding the full plan text:
+
+```
+Implement the migration described in docs/migration-plan.md: schema v2 tables, backfill, cutover.
+Requirements, acceptance criteria, and test gates are defined there.
+```
+
+- State the **what** (end state) plus a **pointer** to the plan/spec/issue that defines requirements — the model fetches and inspects those during its completion audit, so the file stays authoritative even as it changes.
+- Keep it under 4000 characters.
+- Treat the objective as the real task; do not redefine success around a smaller or easier subset when the full scope cannot be finished in one turn — the goal persists across turns by design.
+
 ## Model tools
 
 - `goal_get`
