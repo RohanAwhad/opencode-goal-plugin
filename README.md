@@ -26,6 +26,12 @@ The installer detects the package's server and TUI exports. Add the command defi
 
 Restart OpenCode, then use `/goal <objective>`. Pin a tag or commit instead of `main` when reproducible installs are needed.
 
+> **TUI badge caveat (OpenCode ≤ 1.18.x):** the TUI silently skips plugins referenced as
+> `github:owner/repo#branch` specs — the server plugin loads and `/goal` works, but no badge
+> renders and no error is logged. Point `tui.json` at a local checkout of this repository instead
+> (see the local-development form below); the `tui.json` entry can stay local while
+> `opencode.json` keeps the `github:` spec for the server plugin.
+
 ## Install for local development
 
 1. Run `bun install` in this repository.
