@@ -333,6 +333,8 @@ Read from plugin config under the `"goal"` key. All fields optional.
 }
 ```
 
+**Agent requirement for unattended loops:** the continuation loop only proceeds without a human if the session's agent can run tools without interactive approval — use an auto-accept-style agent (e.g. the `auto-accept` agent) for goal sessions. With a restrictive agent, a permission prompt mid-turn blocks the turn and the loop waits until someone approves (same property as Codex's approval policy).
+
 ## 16. Security
 
 - Objectives are user-provided data; the continuation prompt explicitly marks them as such (no injection as instructions — same rule as Codex).
@@ -340,6 +342,7 @@ Read from plugin config under the `"goal"` key. All fields optional.
 - Goal state files are plain JSON under the user's data dir; treated as untrusted on reload.
 - `goal_update` rejects statuses outside `complete`/`blocked` — the model cannot pause/clear its own goal.
 - The `auto_continue` config is the user-side escape hatch: one config flip kills the loop (same philosophy as background-bash's `route_bash` kill-switch).
+- **Permission prompts stall unattended loops:** with a restrictive agent, a mid-turn permission request blocks the turn until a human approves. Unattended operation requires an auto-accept-style agent (§15). This is an OpenCode platform property, not a plugin bug.
 
 ## 17. Edge cases
 
@@ -356,10 +359,13 @@ Read from plugin config under the `"goal"` key. All fields optional.
 | Plugin reload mid-goal | Goal file reloaded; `continuationInFlight` resets (loop resumes on next idle) |
 | Error streak hits 3 | System-side `blocked`; user `/goal resume` restarts with a fresh error count (reset on resume) |
 | Model never calls update | Loop runs indefinitely (user pause/clear or budget ends it) — same as Codex |
+| Permission prompt mid-continuation | Turn blocks until approved; loop resumes from the next idle after approval. Unattended goal sessions must use an auto-accept-style agent (§15) |
 
 ## 18. Validation plan (agentic — no human in the loop)
 
 Same principles as background-bash spec §18: headless `opencode run` in an isolated scratch env (`XDG_CONFIG_HOME/CACHE/DATA` pointed at temp dirs, `OPENCODE_LOG_LEVEL=DEBUG`), permission fixtures instead of prompts, evidence-cited verdicts (plugin log lines `[goal] event=<...>` via `client.app.log`), deterministic timers, harness script `scripts/validate.ts` producing `logs/validate/VALIDATION-REPORT.md`.
+
+**All verification runs use the `auto-accept` agent** (YOLO mode: permissions auto-approved, no prompts) — via `opencode run --agent auto-accept` for the harness and the agent picker / `--agent auto-accept` for the tmux TUI smoke. Without it, continuation turns would block on permission requests and the harness would hang; the harness must never depend on interactive approval.
 
 ### 18.1 Scenarios
 
@@ -378,7 +384,7 @@ Same principles as background-bash spec §18: headless `opencode run` in an isol
 | S11 | Agent/model preservation | Session with a non-default agent/model: after a continuation, `session.get` still reports the original agent/model/variant |
 | S12 | Background-job gate | Fixture: model turn starts a long `background_bash` job, turn ends. Assert: no `event=continue` while job is `running`; after job completes (notification turn), next `session.idle` → `event=continue` fires; continuation message is stamped after the job's terminal notification in the message listing |
 | S13 | Transcript artifact | After `/goal <text>`: a status message (state, objective, elapsed) is present in the session's message listing (either as the replaced command message or as a `noReply` message); no budget/usage strings in it |
-| S14 | TUI badge (manual smoke check) | With a goal active: badge shows `ACTIVE` + ticking elapsed in the session view; `/goal pause` → `PAUSED`; `/goal clear` → badge disappears. Manual: TUI rendering is not automatable via SDK events |
+| S14 | TUI badge smoke (agent-runnable) | Launch `opencode --agent auto-accept` in a detached tmux session; via `tmux send-keys`: `/goal <text>` → `tmux capture-pane -p` shows `ACTIVE` + objective; re-capture after ~35 s → elapsed ticks; `/goal pause` → `PAUSED`; `/goal clear` → badge disappears. Aesthetic judgment (colors/position) remains a human check |
 
 ### 18.2 Unit tests (bun test)
 
@@ -407,3 +413,4 @@ Store mutations + atomic writes; status transitions (full matrix); accounting ma
 11. **The background-shell plugin may or may not be loaded**; the gate treats a missing `background_list` tool as "no jobs" (§5.4).
 12. **The TUI plugin (`goal-tui.ts`) loads in the TUI process and reads the same goal JSON files** via `api.state.path.state`; both plugins share a path constant. If the TUI is not running (e.g. headless/web), the badge is absent but everything else works.
 13. **`session_prompt_right` slot is available and rendered** in the installed TUI (1.18.16, tui.d.ts:370-372); slot availability per TUI version is verified at first smoke test (S14).
+14. **The `auto-accept` agent exists in the user's config** and is used for every automated verification run; production goal sessions likewise need an auto-accept-style agent to run unattended (§15, §18).
