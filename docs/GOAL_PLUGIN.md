@@ -6,7 +6,7 @@
 | Date | 2026-08-14 |
 | Project | opencode-goal-plugin (plugin: `OpenCodeGoalPlugin`) |
 | Delivery | OpenCode plugin (no fork), TypeScript, Bun |
-| Reference implementation | OpenAI Codex `/goal` (external_libs/codex, `codex-rs/ext/goal`, `codex-rs/tui`) — reverse-engineered 2026-08-14 |
+| Reference implementation | OpenAI Codex `/goal` (`../opencode-background-agent/external_libs/codex`, especially `codex-rs/ext/goal` and `codex-rs/tui`) — reverse-engineered 2026-08-14 |
 | References | `docs/CODEX_GOAL_REFERENCE.md` (reverse-engineered Codex behavior — read first), `codex-rs/ext/goal/src/{api,runtime,extension,tool,spec,steering,accounting}.rs`, `codex-rs/ext/goal/templates/goals/*.md`, `codex-rs/core/src/tasks/{mod,lifecycle}.rs`, installed `@opencode-ai/plugin` (1.18.x) types |
 
 ---
@@ -414,3 +414,14 @@ Store mutations + atomic writes; status transitions (full matrix); accounting ma
 12. **The TUI plugin (`goal-tui.ts`) loads in the TUI process and reads the same goal JSON files** via `api.state.path.state`; both plugins share a path constant. If the TUI is not running (e.g. headless/web), the badge is absent but everything else works.
 13. **`session_prompt_right` slot is available and rendered** in the installed TUI (1.18.16, tui.d.ts:370-372); slot availability per TUI version is verified at first smoke test (S14).
 14. **The `auto-accept` agent exists in the user's config** and is used for every automated verification run; production goal sessions likewise need an auto-accept-style agent to run unattended (§15, §18).
+
+## 21. Implementation notes (OpenCode 1.18.18 POC)
+
+The shipped v1 follows this design with these source-verified host adaptations:
+
+1. The repository is a directory plugin package with separate `./server` and `./tui` exports. OpenCode loads server plugins from `opencode.json` and TUI plugins from the separate `tui.json`; both configs must reference this package and the same `data_dir`.
+2. OpenCode exposes tool discovery but no plugin-to-plugin tool execution API. The background gate derives outstanding job IDs from `background_bash` tool-result metadata and clears them from terminal notification messages in the session history.
+3. `command.execute.before` can rewrite but cannot cancel the command's model turn. Set/edit/resume reuse that turn for goal work; show/pause/clear use a minimal acknowledgment turn.
+4. v1 uses `/goal edit <new objective>`. A bare `/goal edit` returns usage guidance because the backend command hook cannot open an editor dialog.
+5. Terminal `noReply` user messages are not injected: OpenCode can treat a dangling no-reply message as replyable after session resume. Model terminal state is visible in the `goal_update` tool result; system terminal state is visible in the badge, log, and `/goal` summary.
+6. Goal logs are file-only (`logs/goal-plugin.log`) because writing plugin logs to stdout corrupts the OpenTUI renderer.

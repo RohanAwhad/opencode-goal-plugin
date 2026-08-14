@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    [
+      ".",
+      {
+        "goal": {
+          "enabled": true,
+          "data_dir": "~/.local/share/opencode/goal-plugin",
+          "time_budget_minutes": null,
+          "max_error_turns": 3,
+          "auto_continue": true
+        }
+      }
+    ]
+  ],
+  "command": {
+    "goal": {
+      "description": "Set or manage the session goal",
+      "template": "$ARGUMENTS",
+      "subtask": false
+    }
+  }
+}
