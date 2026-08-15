@@ -35,27 +35,34 @@ function outputOf(result: string | { output: string }): string {
 }
 
 describe("server plugin contracts", () => {
-  test("registers tools and enforces create/update semantics", async () => {
+  test("registers goal_get and goal_update only and gates them on an active goal", async () => {
     const { input, directory } = setup()
     const hooks = await plugin.server(input, { goal: { data_dir: directory } })
     const get = hooks.tool?.goal_get
-    const create = hooks.tool?.goal_create
     const update = hooks.tool?.goal_update
-    if (!get || !create || !update) throw new Error("goal tools not registered")
+    if (!get || !update) throw new Error("goal tools not registered")
+    expect(hooks.tool?.goal_create).toBeUndefined()
 
-    expect(outputOf(await get.execute({}, context()))).toBe("No goal is currently set.")
-    const created = await create.execute({ objective: "ship", time_budget_minutes: undefined }, context())
-    expect(outputOf(created)).toContain("status: active")
-    expect(outputOf(created).toLowerCase()).not.toContain("budget")
+    expect(outputOf(await get.execute({}, context()))).toContain("No active goal")
+    expect(outputOf(await update.execute({ status: "complete" }, context()))).toContain("No active goal")
 
-    const duplicate = await create.execute({ objective: "replace", time_budget_minutes: undefined }, context())
-    expect(outputOf(duplicate)).toContain("unfinished goal")
+    const command = hooks["command.execute.before"]
+    if (!command) throw new Error("goal command hook not registered")
+    const output = { parts: [{ type: "text", text: "ship" }] } as Parameters<typeof command>[1]
+    await command({ command: "goal", sessionID: "s1", arguments: "ship" }, output)
+
+    const active = await get.execute({}, context())
+    expect(outputOf(active)).toContain("status: active")
+    expect(outputOf(active).toLowerCase()).not.toContain("budget")
 
     const rejected = await update.execute({ status: "paused" }, context())
     expect(outputOf(rejected)).toContain("only accepts complete or blocked")
 
     const completed = await update.execute({ status: "complete" }, context())
     expect(outputOf(completed)).toContain("status: complete")
+
+    expect(outputOf(await get.execute({}, context()))).toContain("goal is complete; goal tools work only while the goal is active")
+    expect(outputOf(await update.execute({ status: "blocked" }, context()))).toContain("goal is complete; goal tools work only while the goal is active")
   })
 
   test("rewrites a set command into the first continuation and injects an artifact", async () => {

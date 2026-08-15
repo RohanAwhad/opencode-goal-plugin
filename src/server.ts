@@ -18,11 +18,19 @@ function replaceCommandParts(parts: unknown[], text: string): void {
   parts.splice(0, parts.length, { type: "text", text })
 }
 
-function goalToolOutput(goal: Goal | null): { output: string; metadata: Record<string, unknown> } {
-  if (!goal) return { output: "No goal is currently set.", metadata: { found: false } }
+function goalToolOutput(goal: Goal): { output: string; metadata: Record<string, unknown> } {
   return {
     output: `status: ${goal.status}\nobjective: ${goal.objective}`,
     metadata: { found: true, status: goal.status },
+  }
+}
+
+function activeOnlyRefusal(goal: Goal | null): { output: string; metadata: Record<string, unknown> } {
+  return {
+    output: goal
+      ? `The session goal is ${goal.status}; goal tools work only while the goal is active.`
+      : "No active goal in this session. Goals are created with the /goal command.",
+    metadata: { allowed: false, status: goal?.status ?? "none" },
   }
 }
 
@@ -35,36 +43,16 @@ const server: Plugin = async (input, options) => {
 
   const tools: Hooks["tool"] = {
     goal_get: tool({
-      description: "Read the current goal for this session. Returns only status and objective; usage accounting is user-facing.",
+      description: "Read the active goal for this session. Returns status and objective; refuses when no goal is active. Usage accounting is user-facing.",
       args: {},
       async execute(_args, ctx) {
-        return goalToolOutput(store.get(ctx.sessionID))
-      },
-    }),
-    goal_create: tool({
-      description: "Create a goal only when explicitly requested by the user or system instructions. Never infer a goal from an ordinary task. Omit time_budget_minutes unless explicitly requested.",
-      args: {
-        objective: z.string().describe("Concrete objective to persist and pursue"),
-        time_budget_minutes: z.number().positive().optional().describe("Positive time limit; omit unless explicitly requested"),
-      },
-      async execute(args, ctx) {
-        const objective = args.objective.trim()
-        if (!objective) return { output: "Cannot create a goal with an empty objective.", metadata: { created: false } }
-        const current = store.get(ctx.sessionID)
-        if (current && ["active", "paused", "blocked"].includes(current.status)) {
-          return {
-            output: "Cannot create a new goal because this session has an unfinished goal; complete or clear the existing goal first.",
-            metadata: { created: false, goalID: current.goalID },
-          }
-        }
-        const minutes = args.time_budget_minutes ?? config.time_budget_minutes
-        const goal = store.create(ctx.sessionID, objective, minutes === null || minutes === undefined ? null : minutes * 60)
-        logger.log("info", { event: "set", session: ctx.sessionID, goal: goal.goalID, via: "tool" })
+        const goal = store.get(ctx.sessionID)
+        if (!goal || goal.status !== "active") return activeOnlyRefusal(goal)
         return goalToolOutput(goal)
       },
     }),
     goal_update: tool({
-      description: "Mark the current goal complete only after proving every requirement, or blocked only after the same blocker repeats for 3 consecutive goal turns. Pause, resume, and budget states are user/system controlled.",
+      description: "Mark the active goal complete only after proving every requirement, or blocked only after the same blocker repeats for 3 consecutive goal turns. Refuses unless a goal is active. Pause, resume, and budget states are user/system controlled.",
       args: {
         status: z.string().describe("Only complete or blocked"),
       },
@@ -76,7 +64,7 @@ const server: Plugin = async (input, options) => {
           }
         }
         const current = store.get(ctx.sessionID)
-        if (!current) return { output: "Cannot update goal because this session has no goal.", metadata: { updated: false } }
+        if (!current || current.status !== "active") return activeOnlyRefusal(current)
         const goal = store.mutate(ctx.sessionID, (value) => value && {
           ...value,
           status: args.status as "complete" | "blocked",

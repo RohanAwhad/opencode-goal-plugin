@@ -112,9 +112,10 @@ Requirements, acceptance criteria, and test gates are defined there.
 
 ## Model tools
 
-- `goal_get`
-- `goal_create`
-- `goal_update` (`complete` or `blocked` only)
+- `goal_get` — read the active goal (refuses when no goal is active)
+- `goal_update` — `complete` or `blocked` only (refuses when no goal is active)
+
+Goal creation is `/goal` command only — there is no model-facing create tool.
 
 ## Development
 
