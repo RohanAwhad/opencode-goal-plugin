@@ -32,3 +32,9 @@
 - `types.ts`/`store.ts`/`goal-tui.tsx`: `normalizeGoal` backfills `pausedAt` from `updatedAt` for legacy paused goal files (pre-v3 pauses were never recorded; without backfill a goal paused 32 h ago showed 32 h of elapsed).
 - Tests: wall-clock rendering, pause exclusion/accrual, terminal freeze, idle-time budget expiry. `bun test` 25 pass, `tsc --noEmit` clean.
 - Gotcha recorded: `blocked` counts toward elapsed (only explicit pauses subtract); pause while a goal is `paused` is impossible (guard), so `pausedAt` is always null when non-paused.
+
+## 2026-08-15 — TUI badge: drop objective text (v0.1.3)
+
+- The `session_prompt_right` badge now renders only `STATUS · elapsed` (`ACTIVE · 2m`); the truncated objective was removed (`src/goal-tui.tsx`).
+- Removed the now-unused `shortObjective` helper and its test (`test/tui.test.ts`); `testInternals` keeps `goalPath`/`shortElapsed`/`formatElapsed`.
+- Updated the S14 badge smoke spec in `GOAL_PLUGIN.md` (badge shows `ACTIVE` + elapsed, no objective).

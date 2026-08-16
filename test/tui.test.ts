@@ -10,6 +10,5 @@ describe("goal TUI badge helpers", () => {
     expect(testInternals.shortElapsed(59)).toBe("59s")
     expect(testInternals.shortElapsed(61)).toBe("1m")
     expect(testInternals.shortElapsed(3660)).toBe("1h 1m")
-    expect(testInternals.shortObjective("x".repeat(40))).toHaveLength(36)
   })
 })

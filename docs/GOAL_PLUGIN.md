@@ -382,7 +382,7 @@ Same principles as background-bash spec §18: headless `opencode run` in an isol
 | S11 | Agent/model preservation | Session with a non-default agent/model: after a continuation, `session.get` still reports the original agent/model/variant |
 | S12 | Background-job gate | Fixture: model turn starts a long `background_bash` job, turn ends. Assert: no `event=continue` while job is `running`; after job completes (notification turn), next `session.idle` → `event=continue` fires; continuation message is stamped after the job's terminal notification in the message listing |
 | S13 | Transcript artifact | After `/goal <text>`: a status message (state, objective, elapsed) is present in the session's message listing (either as the replaced command message or as a `noReply` message); no budget/usage strings in it |
-| S14 | TUI badge smoke (agent-runnable) | Launch `opencode --agent auto-accept` in a detached tmux session; via `tmux send-keys`: `/goal <text>` → `tmux capture-pane -p` shows `ACTIVE` + objective; re-capture after ~35 s → elapsed ticks; `/goal pause` → `PAUSED`; `/goal clear` → badge disappears. Aesthetic judgment (colors/position) remains a human check |
+| S14 | TUI badge smoke (agent-runnable) | Launch `opencode --agent auto-accept` in a detached tmux session; via `tmux send-keys`: `/goal <text>` → `tmux capture-pane -p` shows `ACTIVE` + elapsed (no objective text); re-capture after ~35 s → elapsed ticks; `/goal pause` → `PAUSED`; `/goal clear` → badge disappears. Aesthetic judgment (colors/position) remains a human check |
 
 ### 18.2 Unit tests (bun test)
 
