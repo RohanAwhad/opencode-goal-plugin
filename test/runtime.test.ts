@@ -97,6 +97,15 @@ describe("GoalRuntime continuation", () => {
     expect(store.get("s1")?.status).toBe("budget_limited")
   })
 
+  test("wall-clock budget trips while idle before a continuation starts", async () => {
+    const { runtime, store, calls } = setup({ budgetSeconds: 0.001 })
+    await Bun.sleep(5)
+    expect(await runtime.continueIfIdle("s1")).toBe(false)
+    expect(store.get("s1")?.status).toBe("budget_limited")
+    expect(store.get("s1")?.continuationInFlight).toBe(false)
+    expect(calls).toHaveLength(0)
+  })
+
   test("in-turn completion wins over budget and final accounting is preserved", async () => {
     const { runtime, store, goal, calls } = setup({ budgetSeconds: 0.001 })
     runtime.beginCommandTurn("s1", goal)

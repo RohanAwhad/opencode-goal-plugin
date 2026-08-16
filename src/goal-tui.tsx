@@ -1,7 +1,7 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { Show, createSignal, onCleanup } from "solid-js"
 import { goalOptions, resolveConfig } from "./config"
-import { GoalSchema, type Goal } from "./types"
+import { GoalSchema, normalizeGoal, type Goal } from "./types"
 import { elapsedSeconds, formatElapsed } from "./commands"
 import path from "node:path"
 import { existsSync, readFileSync } from "node:fs"
@@ -24,7 +24,7 @@ function GoalBadge(props: { api: TuiPluginApi; dataDirectory: string; sessionID:
   const readGoal = (): Goal | null => {
     const file = goalPath(props.dataDirectory, props.sessionID)
     if (!existsSync(file)) return null
-    return GoalSchema.parse(JSON.parse(readFileSync(file, "utf8")))
+    return normalizeGoal(GoalSchema.parse(JSON.parse(readFileSync(file, "utf8"))))
   }
   const [goal, setGoal] = createSignal<Goal | null>(readGoal())
   const [now, setNow] = createSignal(Date.now())
@@ -54,7 +54,7 @@ function GoalBadge(props: { api: TuiPluginApi; dataDirectory: string; sessionID:
   const seconds = () => {
     const value = goal()
     if (!value) return 0
-    return elapsedSeconds(value, value.continuationInFlight ? value.updatedAt : undefined, now())
+    return elapsedSeconds(value, now())
   }
   const color = () => {
     const status = goal()?.status

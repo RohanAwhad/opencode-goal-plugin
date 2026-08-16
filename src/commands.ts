@@ -1,4 +1,4 @@
-import type { Goal, GoalCommand, GoalPluginConfig } from "./types"
+import type { Goal, GoalCommand, GoalPluginConfig, GoalStatus } from "./types"
 import { GoalStore } from "./store"
 
 export type CommandOutcome = {
@@ -6,6 +6,8 @@ export type CommandOutcome = {
   goal: Goal | null
   modelPrompt: "continuation" | "objective_updated" | "handled"
 }
+
+const frozenStatuses = new Set<GoalStatus>(["complete", "budget_limited"])
 
 export function parseGoalCommand(argumentsText: string): GoalCommand {
   const value = argumentsText.trim()
@@ -26,24 +28,22 @@ export function formatElapsed(totalSeconds: number): string {
   return `${hours}h ${minutes}m ${remainder}s`
 }
 
-export function elapsedSeconds(goal: Goal, turnStartedAt?: number, now = Date.now()): number {
-  const inFlight = turnStartedAt === undefined ? 0 : Math.max(0, (now - turnStartedAt) / 1000)
-  return goal.timeUsedSeconds + inFlight
+export function elapsedSeconds(goal: Goal, now = Date.now()): number {
+  const end = frozenStatuses.has(goal.status) ? goal.updatedAt : now
+  const paused =
+    goal.pausedTotalSeconds +
+    (goal.pausedAt !== null && end > goal.pausedAt ? (end - goal.pausedAt) / 1000 : 0)
+  return Math.max(0, (end - goal.createdAt) / 1000 - paused)
 }
 
-export function renderArtifact(
-  goal: Goal | null,
-  note: string,
-  turnStartedAt?: number,
-  now = Date.now(),
-): string {
+export function renderArtifact(goal: Goal | null, note: string, now = Date.now()): string {
   if (!goal) return `Goal — NONE\n\n${note}`
   return [
     `Goal — ${goal.status.toUpperCase()}`,
     "",
     goal.objective,
     "",
-    `Elapsed: ${formatElapsed(elapsedSeconds(goal, turnStartedAt, now))}`,
+    `Elapsed: ${formatElapsed(elapsedSeconds(goal, now))}`,
     note,
   ].join("\n")
 }
@@ -53,6 +53,7 @@ export function applyGoalCommand(
   sessionID: string,
   command: GoalCommand,
   config: GoalPluginConfig,
+  now = Date.now(),
 ): CommandOutcome {
   const current = store.get(sessionID)
 
@@ -111,7 +112,12 @@ export function applyGoalCommand(
     if (!current || current.status !== "active") {
       return { artifact: renderArtifact(current, "Only an active goal can be paused."), goal: current, modelPrompt: "handled" }
     }
-    const goal = store.mutate(sessionID, (value) => value && { ...value, status: "paused", continuationInFlight: false })
+    const goal = store.mutate(sessionID, (value) => value && {
+      ...value,
+      status: "paused",
+      continuationInFlight: false,
+      pausedAt: now,
+    })
     return { artifact: renderArtifact(goal, "Automatic continuation is paused."), goal, modelPrompt: "handled" }
   }
 
@@ -124,6 +130,9 @@ export function applyGoalCommand(
       status: "active",
       consecutiveErrorTurns: 0,
       continuationInFlight: false,
+      pausedAt: null,
+      pausedTotalSeconds:
+        value.pausedAt !== null ? value.pausedTotalSeconds + (now - value.pausedAt) / 1000 : value.pausedTotalSeconds,
     })
     return { artifact: renderArtifact(goal, "Automatic continuation resumes now."), goal, modelPrompt: "continuation" }
   }

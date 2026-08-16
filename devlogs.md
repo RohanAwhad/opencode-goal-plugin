@@ -19,3 +19,16 @@
 - `goal_get`/`goal_update` now refuse with an instructive message unless the session goal is `active` (`activeOnlyRefusal` in `src/server.ts`).
 - Verified against opencode source: the `tool` hook is a static record snapshotted once at startup (`ToolRegistry.state`, `packages/opencode/src/tool/registry.ts:199-204`) — no dynamic per-state registration exists, so active-only enforcement lives inside each tool's `execute`.
 - Updated `scripts/validate.ts` (asserts `goal_create` absent), `test/server.test.ts` (active-only gating flow via `/goal` command), README, and spec (`GOAL_PLUGIN.md` §5.1/§8/§12/§17/§20, new S5b scenario).
+
+## 2026-08-15 — elapsed time bug fix (v3, wall-clock accounting)
+
+**Bug:** "Elapsed" displayed model-turn durations, not real elapsed time. `timeUsedSeconds` only accrued per continuation turn (start snapshot → finalize delta); the clock froze between turns, so a goal active for hours showed seconds. Transcript artifacts also never passed an in-flight start, so `/goal set` showed a permanent `Elapsed: 0h 0m 0s`. The TUI badge's in-flight estimate used `updatedAt` (last store write), not the real turn start.
+
+**Fix (root cause):** elapsed is now **wall-clock since `createdAt` minus paused time**:
+- `types.ts`: new `pausedAt` (nullable) + `pausedTotalSeconds` fields, zod `.default()` so pre-v3 goal files parse unchanged.
+- `commands.ts`: `elapsedSeconds(goal, now)` = `(end - createdAt)/1000 - paused`, frozen at `updatedAt` for `complete`/`budget_limited`; `renderArtifact` drops the dead `turnStartedAt` param; `/goal pause` records `pausedAt`, `/goal resume` accrues `pausedTotalSeconds`; `applyGoalCommand` takes an injectable `now` for deterministic tests.
+- `runtime.ts`: `finalizeTurn` charges wall-clock elapsed; `continueIfIdle` pre-checks the budget while idle (budget can now expire between turns); `seconds` log = total wall elapsed.
+- `goal-tui.tsx`: badge uses wall-clock elapsed — the 30 s ticker now matches a real watch.
+- `types.ts`/`store.ts`/`goal-tui.tsx`: `normalizeGoal` backfills `pausedAt` from `updatedAt` for legacy paused goal files (pre-v3 pauses were never recorded; without backfill a goal paused 32 h ago showed 32 h of elapsed).
+- Tests: wall-clock rendering, pause exclusion/accrual, terminal freeze, idle-time budget expiry. `bun test` 25 pass, `tsc --noEmit` clean.
+- Gotcha recorded: `blocked` counts toward elapsed (only explicit pauses subtract); pause while a goal is `paused` is impossible (guard), so `pausedAt` is always null when non-paused.

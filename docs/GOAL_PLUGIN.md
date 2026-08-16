@@ -173,7 +173,7 @@ Two complementary artifacts, one store. The model-facing surface stays clean (no
 - On `/goal <text>`: `"Goal set — ACTIVE"` + objective + elapsed clock + `"Continuation auto-starts when the session is idle."` (or PAUSED-state notice when a new goal is set while paused).
 - On `/goal` (summary), `/goal edit`, `/goal pause|resume|clear`: a status message with the resulting state + objective + elapsed.
 - On terminal transitions (model `complete`/`blocked`, system budget flip, 3-error block): a `noReply` status message so the transcript shows why the loop stopped.
-- Elapsed format: `Xh Ym Zs`, computed as `timeUsedSeconds` + in-flight turn delta when a turn is running.
+- Elapsed format: `Xh Ym Zs`, computed as **wall-clock time since goal creation minus paused time** (the only metric a user can verify against a watch). Paused durations accrue from `/goal pause` to `/goal resume`; `complete`/`budget_limited` freeze the clock at the transition.
 
 **B. Persistent TUI badge (always visible while in the session).** Uses the TUI plugin API (verified in installed `@opencode-ai/plugin@1.18.16`, `dist/tui.d.ts`):
 
@@ -197,7 +197,9 @@ type Goal = {
   objective: string       // literal text after /goal
   status: GoalStatus
   timeBudgetSeconds: number | null   // null = unlimited
-  timeUsedSeconds: number
+  timeUsedSeconds: number     // wall-clock since creation minus paused time (display + budget guard)
+  pausedTotalSeconds: number  // accumulated paused time (accrued on resume)
+  pausedAt: number | null     // wall-clock of the current pause, null when not paused
   tokensUsed: number      // best-effort, informational only (charged when the event carries tokens; never gates anything)
   createdAt: number
   updatedAt: number
@@ -268,10 +270,11 @@ Same as Codex, stated explicitly (see `CODEX_GOAL_REFERENCE.md` §"The trust mod
 
 ### 11.1 Time accounting (primary), token tracking (best-effort)
 
-- On continuation start: snapshot wall-clock.
-- On final `message.updated`: `timeUsedSeconds += delta` — always available, the reliable metric.
+- `timeUsedSeconds` is **wall-clock since `createdAt` minus accumulated paused time** — recomputed at every turn boundary and before every continuation start, so the displayed elapsed matches a real watch. It does **not** measure model-turn durations (a goal active for hours with short turns used to show seconds — fixed in v3).
+- `pausedTotalSeconds` accrues on `/goal pause` → `/goal resume`; while paused, the live elapsed is frozen at the pause moment.
+- `complete`/`budget_limited` freeze the clock at the transition (`updatedAt`); `blocked` keeps counting until paused or resumed.
 - `tokensUsed`: charged when the final `message.updated` carries cumulative `tokens {input, output, reasoning}` (verify in POC). Informational only — never gates anything; stays 0 if events don't provide it.
-- After charging: if `timeBudgetSeconds` is set and `timeUsedSeconds >= timeBudgetSeconds` → status `budget_limited`, **stop the loop silently** — no prompt injection, no budget explanation to the model (§9.2).
+- After charging (or at idle, before the next continuation): if `timeBudgetSeconds` is set and `timeUsedSeconds >= timeBudgetSeconds` → status `budget_limited`, **stop the loop silently** — no prompt injection, no budget explanation to the model (§9.2).
 
 ### 11.2 Error guard
 
@@ -383,12 +386,12 @@ Same principles as background-bash spec §18: headless `opencode run` in an isol
 
 ### 18.2 Unit tests (bun test)
 
-Store mutations + atomic writes; status transitions (full matrix); accounting math (time deltas primary; token deltas best-effort when present); error counter + reset-on-resume; continuation guard logic (in-flight dedupe, status gating, **background-job gate: mock `client.tools.call(background_list)` → running job ⇒ no continuation, empty list ⇒ continuation**); template rendering (escape objective); command parsing (`/goal` variants); prompt-stamping of agent/model/variant; **no budget/usage string appears anywhere in rendered prompts or tool outputs (assert in tests)**; artifact rendering (transcript status message shape + elapsed formatting, incl. in-flight turn delta); TUI badge elapsed computation (pure function shared/duplicated with a unit test on the same inputs).
+Store mutations + atomic writes; status transitions (full matrix); accounting math (wall-clock time primary; token deltas best-effort when present); error counter + reset-on-resume; continuation guard logic (in-flight dedupe, status gating, **background-job gate: mock `client.tools.call(background_list)` → running job ⇒ no continuation, empty list ⇒ continuation**); template rendering (escape objective); command parsing (`/goal` variants); prompt-stamping of agent/model/variant; **no budget/usage string appears anywhere in rendered prompts or tool outputs (assert in tests)**; artifact rendering (transcript status message shape + elapsed formatting, incl. paused-time exclusion and terminal freeze); TUI badge elapsed computation (pure function shared/duplicated with a unit test on the same inputs).
 
 ## 19. Decisions (formerly open questions — resolved)
 
 1. **Command artifact mechanism** — *decision: ship first, verify mechanism in POC, course-correct later.* Implementation: the artifact is **always delivered via the reliable `noReply` message path** (guaranteed visible regardless of hook behavior); parts replacement is additionally attempted as a cosmetic upgrade (raw `/goal text` hidden) and kept only if it provably works. The goal is to get the feature in hand first (§6, §6.1A).
-2. **Accounting metric** — *decision: time-first.* Wall-clock deltas are the accounting primitive and the budget guard (`time_budget_minutes`, config only — no model-facing budget input since `goal_create` was dropped). Token tracking is best-effort, informational only, never gates anything (§11.1). Explicit deviation from Codex's token-budget.
+2. **Accounting metric** — *decision: time-first.* Wall-clock since goal creation (minus pauses) is the accounting primitive and the budget guard (`time_budget_minutes`, config only — no model-facing budget input since `goal_create` was dropped). Token tracking is best-effort, informational only, never gates anything (§11.1). Explicit deviation from Codex's token-budget.
 3. **Replace semantics** — *decision: Codex parity.* A completed goal is replaced by `/goal <text>` without confirmation; an unfinished goal is **never clobbered** — the command returns a guidance artifact ("run `/goal clear` first or `/goal edit`"), i.e. confirmation is an explicit user action, not a silent overwrite. A TUI `DialogConfirm` handshake is a possible later refinement, not v1.
 4. **Multi-agent sessions** — *decision (unchanged):* continuation runs under the session's agent/model/variant (§14, S11). No plan-agent special-casing in v1.
 5. **Windows** — *decision (unchanged):* nothing OS-specific in this plugin; JSON path conventions are standard `path.join` and hold cross-platform.

@@ -5,6 +5,7 @@ import path from "node:path"
 import { applyGoalCommand, elapsedSeconds, formatElapsed, parseGoalCommand, renderArtifact } from "../src/commands"
 import { defaultConfig, resolveConfig } from "../src/config"
 import { GoalStore } from "../src/store"
+import { normalizeGoal, type Goal } from "../src/types"
 
 function setup() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "goal-command-test-"))
@@ -58,11 +59,45 @@ describe("goal command transitions", () => {
 })
 
 describe("elapsed rendering", () => {
-  test("formats persisted plus in-flight time", () => {
+  test("wall-clock elapsed since creation", () => {
     const { store } = setup()
-    const goal = { ...store.create("s1", "ship", null), timeUsedSeconds: 65 }
+    const goal = store.create("s1", "ship", null, 10_000)
     expect(formatElapsed(3661)).toBe("1h 1m 1s")
-    expect(elapsedSeconds(goal, 1_000, 6_000)).toBe(70)
-    expect(renderArtifact(goal, "note", 1_000, 6_000)).toContain("Elapsed: 0h 1m 10s")
+    expect(elapsedSeconds(goal, 16_000)).toBe(6)
+    expect(renderArtifact(goal, "note", 16_000)).toContain("Elapsed: 0h 0m 6s")
+  })
+
+  test("paused time is excluded and accrued on resume", () => {
+    const { store, config } = setup()
+    store.create("s1", "ship", null, 10_000)
+    applyGoalCommand(store, "s1", { type: "pause" }, config, 20_000)
+    const paused = store.get("s1")
+    expect(paused?.pausedAt).toBe(20_000)
+    expect(elapsedSeconds(paused as never, 30_000)).toBe(10)
+
+    applyGoalCommand(store, "s1", { type: "resume" }, config, 40_000)
+    const resumed = store.get("s1")
+    expect(resumed?.pausedAt).toBeNull()
+    expect(resumed?.pausedTotalSeconds).toBeCloseTo(20, 5)
+    expect(elapsedSeconds(resumed as never, 50_000)).toBe(20)
+  })
+
+  test("terminal states freeze the clock at the transition", () => {
+    const { store } = setup()
+    const goal: Goal = { ...store.create("s1", "ship", null, 10_000), status: "complete", updatedAt: 40_000 }
+    expect(elapsedSeconds(goal, 1_000_000)).toBe(30)
+  })
+
+  test("legacy paused goal files backfill pausedAt from updatedAt", () => {
+    const { store } = setup()
+    const legacy: Goal = {
+      ...store.create("s1", "ship", null, 10_000),
+      status: "paused",
+      updatedAt: 20_000,
+      pausedAt: null,
+    }
+    const restored = normalizeGoal(legacy)
+    expect(restored.pausedAt).toBe(20_000)
+    expect(elapsedSeconds(restored, 1_000_000)).toBe(10)
   })
 })

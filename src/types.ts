@@ -10,6 +10,8 @@ export const GoalSchema = z.object({
   status: z.enum(goalStatuses),
   timeBudgetSeconds: z.number().positive().nullable(),
   timeUsedSeconds: z.number().nonnegative(),
+  pausedTotalSeconds: z.number().nonnegative().default(0),
+  pausedAt: z.number().int().nonnegative().nullable().default(null),
   tokensUsed: z.number().int().nonnegative(),
   createdAt: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
@@ -19,6 +21,11 @@ export const GoalSchema = z.object({
 })
 
 export type Goal = z.infer<typeof GoalSchema>
+
+export function normalizeGoal(goal: Goal): Goal {
+  if (goal.pausedAt !== null || goal.status !== "paused") return goal
+  return { ...goal, pausedAt: goal.updatedAt }
+}
 
 export type GoalPluginConfig = {
   enabled: boolean

@@ -1,6 +1,6 @@
 import path from "node:path"
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs"
-import { GoalSchema, type Goal, type GoalStatus } from "./types"
+import { GoalSchema, normalizeGoal, type Goal, type GoalStatus } from "./types"
 
 const unfinishedStatuses = new Set<GoalStatus>(["active", "paused", "blocked"])
 
@@ -33,7 +33,7 @@ export class GoalStore {
       return null
     }
     const goal = GoalSchema.parse(JSON.parse(readFileSync(file, "utf8")))
-    const restored = { ...goal, continuationInFlight: false }
+    const restored = normalizeGoal({ ...goal, continuationInFlight: false })
     this.cache.set(sessionID, restored)
     return restored
   }
@@ -52,6 +52,8 @@ export class GoalStore {
       status: "active",
       timeBudgetSeconds,
       timeUsedSeconds: 0,
+      pausedTotalSeconds: 0,
+      pausedAt: null,
       tokensUsed: 0,
       createdAt: now,
       updatedAt: now,

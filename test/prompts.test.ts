@@ -9,6 +9,8 @@ const goal: Goal = {
   status: "active",
   timeBudgetSeconds: 60,
   timeUsedSeconds: 10,
+  pausedTotalSeconds: 0,
+  pausedAt: null,
   tokensUsed: 20,
   createdAt: 1,
   updatedAt: 1,

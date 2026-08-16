@@ -4,6 +4,7 @@ import { GoalStore } from "./store"
 import { GoalLogger } from "./log"
 import { outstandingBackgroundJobIDs } from "./background"
 import { buildContinuationPrompt } from "./prompts"
+import { elapsedSeconds } from "./commands"
 
 type Client = PluginInput["client"]
 
@@ -80,6 +81,11 @@ export class GoalRuntime {
     const goal = this.store.get(sessionID)
     if (!this.config.enabled || !this.config.auto_continue || !goal || goal.status !== "active") return false
     if (goal.continuationInFlight || this.starts.has(sessionID)) return false
+    if (goal.timeBudgetSeconds !== null && elapsedSeconds(goal, Date.now()) >= goal.timeBudgetSeconds) {
+      this.store.mutate(sessionID, (current) => current && { ...current, status: "budget_limited", continuationInFlight: false })
+      this.logger.log("info", { event: "budget_limited", session: sessionID, goal: goal.goalID })
+      return false
+    }
 
     const response = await this.client.session.messages({ path: { id: sessionID } })
     const messages = (response.data ?? []) as MessageWithParts[]
@@ -152,12 +158,12 @@ export class GoalRuntime {
     const start = this.starts.get(sessionID)
     if (!start) return this.store.get(sessionID)
     this.starts.delete(sessionID)
-    const elapsed = Math.max(0, (Date.now() - start.startedAt) / 1000)
+    const now = Date.now()
     const tokenCount = tokens ? tokens.input + tokens.output + tokens.reasoning : 0
     const previous = this.store.get(sessionID)
     const goal = this.store.mutate(sessionID, (current) => {
       if (!current || current.goalID !== start.goalID) return current
-      const timeUsedSeconds = current.timeUsedSeconds + elapsed
+      const timeUsedSeconds = elapsedSeconds(current, now)
       const consecutiveErrorTurns = error ? current.consecutiveErrorTurns + 1 : 0
       let status = current.status
       if (status === "active" && consecutiveErrorTurns >= this.config.max_error_turns) status = "blocked"
@@ -180,7 +186,7 @@ export class GoalRuntime {
       event: "account",
       session: sessionID,
       goal: goal.goalID,
-      seconds: elapsed.toFixed(3),
+      seconds: goal.timeUsedSeconds.toFixed(3),
       tokens: tokenCount,
       error,
       status: goal.status,
