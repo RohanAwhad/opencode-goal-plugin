@@ -16,10 +16,6 @@ function shortElapsed(seconds: number): string {
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
 }
 
-function shortObjective(objective: string): string {
-  return objective.length <= 36 ? objective : `${objective.slice(0, 35)}…`
-}
-
 function GoalBadge(props: { api: TuiPluginApi; dataDirectory: string; sessionID: string }) {
   const readGoal = (): Goal | null => {
     const file = goalPath(props.dataDirectory, props.sessionID)
@@ -68,7 +64,7 @@ function GoalBadge(props: { api: TuiPluginApi; dataDirectory: string; sessionID:
     <Show when={goal()}>
       {(value) => (
         <text fg={color()}>
-          {value().status.toUpperCase()} · {shortElapsed(seconds())} · {shortObjective(value().objective)}
+          {value().status.toUpperCase()} · {shortElapsed(seconds())}
         </text>
       )}
     </Show>
@@ -95,4 +91,4 @@ const plugin: TuiPluginModule = {
 
 export default plugin
 
-export const testInternals = { goalPath, shortElapsed, shortObjective, formatElapsed }
+export const testInternals = { goalPath, shortElapsed, formatElapsed }

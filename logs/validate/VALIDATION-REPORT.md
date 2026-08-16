@@ -1,7 +1,7 @@
 # Goal plugin validation
 
-Started: 2026-08-16T01:24:27.603Z
-Finished: 2026-08-16T01:24:28.392Z
+Started: 2026-08-16T01:27:55.208Z
+Finished: 2026-08-16T01:27:56.104Z
 
 ## Static/runtime contract checks
 
@@ -23,8 +23,8 @@ bun test v1.3.14 (0d9b296a)
 
  26 pass
  0 fail
- 89 expect() calls
-Ran 26 tests across 7 files. [156.00ms]
+ 88 expect() calls
+Ran 26 tests across 7 files. [176.00ms]
 ```
 
 ## Typecheck
